@@ -1,0 +1,82 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "ToonKit",
+  "projectDescription": "A Metal-accelerated Swift library implementing TOON (Token-Oriented Object Notation) serialization that reduces LLM token usage by 30–60% compared to JSON.",
+  "theme": "palm",
+  "primaryColor": "#4A90D9",
+  "lightColor": "#EAF3FB",
+  "darkColor": "#1A3A5C",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/toon-format",
+              "concepts/codable-integration",
+              "concepts/metal-acceleration"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/encoding",
+              "guides/decoding",
+              "guides/error-handling",
+              "guides/foundation-types",
+              "guides/performance-tuning"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/toonencoder",
+              "reference/toondecoder",
+              "reference/toondecodingerror",
+              "reference/platform-requirements"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "30–60% token reduction vs JSON for LLM workloads",
+    "Swift Codable-compatible ToonEncoder and ToonDecoder",
+    "Optional Metal GPU acceleration for large string serialization workloads",
+    "Adaptive speed gating — Metal used only when measurably faster",
+    "Configurable delimiters, key folding, and non-finite float strategies",
+    "Resource limits (max depth, input size, object keys, array length) for production safety",
+    "Full Foundation type support: Date (ISO 8601), URL, Data (Base64)",
+    "Implements TOON specification 3.0 (2025-11-24)"
+  ],
+  "publicApiSurface": [
+    "ToonEncoder",
+    "ToonEncoder.encode(_:) -> Data",
+    "ToonEncoder.Delimiter (comma, tab, pipe)",
+    "ToonEncoder.NegativeZeroStrategy (normalize, preserve)",
+    "ToonEncoder.NonFiniteFloatStrategy (null, throw, convertToString)",
+    "ToonEncoder.Acceleration (disabled, metal, metalForced)",
+    "ToonEncoder.KeyFolding (disabled, safe)",
+    "ToonEncoder.Limits",
+    "ToonEncoder.isMetalAccelerationAvailable",
+    "ToonEncoder.isMetalAccelerationEnabled",
+    "ToonDecoder",
+    "ToonDecoder.decode(_:from:) -> T",
+    "ToonDecoder.PathExpansion (automatic, disabled, safe)",
+    "ToonDecoder.Acceleration (disabled, metal, metalForced)",
+    "ToonDecoder.Limits",
+    "ToonDecodingError",
+    "Toon.specVersion"
+  ]
+}
