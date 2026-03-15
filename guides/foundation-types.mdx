@@ -1,0 +1,106 @@
+---
+title: "Foundation types"
+description: "How Date, URL, and Data values are encoded and decoded in TOON."
+---
+
+ToonKit has built-in support for three Foundation types: `Date`, `URL`, and `Data`. No additional configuration is required — the encoder and decoder handle them automatically when they appear in a `Codable` type.
+
+## Representations
+
+| Swift type | TOON representation | Example |
+|---|---|---|
+| `Date` | ISO 8601 string with fractional seconds | `2025-11-24T12:00:00.000Z` |
+| `URL` | Absolute URL string (unquoted when safe ASCII) | `https://example.com/image.png` |
+| `Data` | Base64 string | `aGVsbG8=` |
+
+<Note>
+  Dates are always serialized in UTC using the ISO 8601 internet date-time format with fractional seconds (e.g. `2023-11-14T22:13:20.000Z`). The timezone offset is always `Z`. If you need local-time preservation, store the offset separately.
+</Note>
+
+## Example: Asset struct
+
+Consider a struct with all three Foundation types:
+
+```swift Asset struct definition
+struct Asset: Codable {
+    let url: URL
+    let createdAt: Date
+    let thumbnail: Data
+}
+```
+
+Encoding an `Asset` instance:
+
+```swift Encoding an Asset
+let encoder = ToonEncoder()
+
+let asset = Asset(
+    url: URL(string: "https://example.com/image.png")!,
+    createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+    thumbnail: Data([0xDE, 0xAD, 0xBE, 0xEF])
+)
+
+let data = try encoder.encode(asset)
+let toon = String(data: data, encoding: .utf8)!
+```
+
+The encoded TOON output:
+
+```toon Encoded Asset
+url: https://example.com/image.png
+createdAt: 2023-11-14T22:13:20.000Z
+thumbnail: 3q2+7w==
+```
+
+## Decoding Foundation types
+
+Use the same `ToonDecoder` — no special configuration is needed. The decoder recognises ISO 8601 strings as `Date`, valid URL strings as `URL`, and Base64 strings as `Data` automatically based on the type requested.
+
+```swift Decoding an Asset
+let decoder = ToonDecoder()
+let decoded = try decoder.decode(Asset.self, from: data)
+
+print(decoded.url)        // https://example.com/image.png
+print(decoded.createdAt)  // 2023-11-14 22:13:20 +0000
+print(decoded.thumbnail)  // 4 bytes
+```
+
+## Error cases
+
+Decoding throws `ToonDecodingError` in two situations:
+
+- **`.typeMismatch`** — the TOON value at the key is not a string (e.g. it's an integer).
+- **`.dataCorrupted`** — the string is present but cannot be parsed as the expected Foundation type (e.g. an invalid ISO 8601 string for `Date`, or invalid Base64 for `Data`).
+
+```swift Handling Foundation type decode errors
+do {
+    let asset = try decoder.decode(Asset.self, from: data)
+} catch let error as ToonDecodingError {
+    switch error {
+    case .typeMismatch(let expected, let actual):
+        print("Type error: expected \(expected), got \(actual)")
+    case .dataCorrupted(let message):
+        print("Corrupt value:", message)
+        // e.g. "Invalid ISO 8601 date: not-a-date"
+        // e.g. "Invalid URL: "
+        // e.g. "Invalid Base64 data"
+    default:
+        break
+    }
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Encoding" icon="arrow-up-from-bracket" href="/guides/encoding">
+    Full ToonEncoder configuration reference.
+  </Card>
+  <Card title="Decoding" icon="arrow-down-to-bracket" href="/guides/decoding">
+    Full ToonDecoder configuration reference.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    All ToonDecodingError cases including dataCorrupted.
+  </Card>
+  <Card title="Performance tuning" icon="gauge-high" href="/guides/performance-tuning">
+    Optimize encoding for large batches of Foundation-type values.
+  </Card>
+</CardGroup>

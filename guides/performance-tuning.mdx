@@ -1,0 +1,150 @@
+---
+title: "Performance tuning"
+description: "Choose the right acceleration mode, delimiter, and limits for high-throughput TOON encoding."
+---
+
+For most workloads, the default `ToonEncoder` and `ToonDecoder` configuration is sufficient. Performance tuning becomes relevant when you are encoding large batches of string-heavy payloads, processing high-frequency feeds, or running in environments where token cost and throughput are both constrained.
+
+## Benchmark results
+
+All results measured on macOS arm64 using `swift run ToonBenchmark` (March 14, 2026).
+
+| Benchmark | Without acceleration (ops/s) | Dynamic acceleration (ops/s) | Forced acceleration (ops/s) | Dynamic speedup | Forced speedup |
+|---|---:|---:|---:|---:|---:|
+| Encode structured payload | 15,904 | 16,765 | 2,529 | 1.05x | 0.16x |
+| Round-trip structured payload | 7,503 | 6,788 | 2,092 | 0.90x | 0.28x |
+| Encode primitive array | 72,452 | 70,315 | 5,743 | 0.97x | 0.08x |
+| Encode large escaped string array | 1 | 126 | 81 | **104.11x** | 67.03x |
+| Encode large safe ASCII string array | 3 | 89 | 66 | **28.12x** | 20.93x |
+| Encode realistic exchange-rate feed | 27 | 32 | 26 | 1.15x | 0.94x |
+| Decode structured payload (control) | 14,342 | 14,365 | 14,284 | 1.00x | 1.00x |
+
+**Key observations:**
+
+- The biggest gains appear in large batched string encoding, especially with escape processing — up to **104x** with dynamic acceleration.
+- Mixed workloads and small payloads see no benefit, and forced Metal can actively regress throughput (0.08x–0.28x).
+- Decode throughput is unaffected by acceleration mode (~1.00x across all modes).
+
+<Tip>
+  Run `swift run ToonBenchmark` against your own data shapes to profile real-world behavior before changing acceleration settings in production.
+</Tip>
+
+## Metal acceleration decision tree
+
+Use this decision tree to choose the right `Acceleration` mode for your workload.
+
+<AccordionGroup>
+  <Accordion title="Use .disabled (default) for mixed or small payloads">
+    The CPU path is fastest for:
+    - Small payloads (strings under ~16 KB)
+    - Mixed workloads with many small objects
+    - Structured payloads with few or short string values
+    - Any context where GPU dispatch overhead exceeds processing time
+
+    ```swift Disabled acceleration
+    encoder.acceleration = .disabled  // default
+    ```
+  </Accordion>
+  <Accordion title="Use .metal for batched large string encoding">
+    Metal acceleration provides the largest gains when encoding large batches of long strings — particularly strings that require escape processing.
+
+    The `minimumStringByteCount` threshold gates Metal dispatch: strings shorter than this threshold are encoded on the CPU, avoiding dispatch overhead for short values.
+
+    ```swift Metal with byte threshold
+    // Enable Metal for strings ≥ 16 KB (recommended starting point)
+    encoder.acceleration = .metal(minimumStringByteCount: 16_384)
+    ```
+
+    The adaptive speed gate measures actual GPU vs CPU performance at runtime and disables Metal automatically if it's not faster for your workload. Check whether it's currently enabled:
+
+    ```swift Checking Metal gate status
+    print(ToonEncoder.isMetalAccelerationAvailable) // Can the pipeline be created?
+    print(ToonEncoder.isMetalAccelerationEnabled)   // Has the adaptive gate enabled it?
+    ```
+  </Accordion>
+  <Accordion title="Use .metalForced for benchmarking only">
+    `.metalForced` bypasses the adaptive speed gate and forces the Metal path unconditionally. This exists for deterministic A/B comparisons and hardware characterization.
+
+    ```swift Forced Metal acceleration
+    encoder.acceleration = .metalForced(minimumStringByteCount: 1)
+    ```
+
+    The benchmark table above shows that forced Metal regresses throughput for most workload types. Do not use this in production.
+  </Accordion>
+</AccordionGroup>
+
+## Delimiter choice
+
+The delimiter affects both output size and encoding overhead.
+
+```swift Delimiter options
+encoder.delimiter = .comma  // default — most compatible
+encoder.delimiter = .tab    // avoids escaping for values containing commas
+encoder.delimiter = .pipe   // readable alternative
+```
+
+If your string values frequently contain commas, switching to `.tab` eliminates the need to quote or escape those values during serialization, reducing both output size and CPU work.
+
+## Key folding
+
+When encoding deeply nested single-key objects, enabling `.safe` key folding reduces output size by collapsing chains into dotted keys:
+
+```swift Key folding reduces output
+encoder.keyFolding = .safe
+// { user: { profile: { name: Ada } } } → user.profile.name: Ada
+```
+
+This is particularly effective for configuration-style payloads with many levels of nesting. Use `flattenDepth` to limit how deep folding reaches:
+
+```swift Limiting fold depth
+encoder.keyFolding = .safe
+encoder.flattenDepth = 3  // fold at most 3 key segments
+```
+
+## Resource limits
+
+Setting tight limits reduces overhead by allowing the encoder and decoder to reject oversized inputs early, before significant memory or CPU is consumed.
+
+```swift Tight limits for known-size inputs
+// If you know your payloads are small, tighten the limits
+decoder.limits = ToonDecoder.Limits(
+    maxInputSize: 512 * 1024,  // 512 KB
+    maxDepth: 8,
+    maxObjectKeys: 100,
+    maxArrayLength: 1_000
+)
+```
+
+Conversely, if you are processing large trusted inputs and hitting limit errors, increase the relevant limit rather than switching to `.unlimited`:
+
+```swift Increasing a specific limit
+decoder.limits = ToonDecoder.Limits(
+    maxInputSize: 50 * 1024 * 1024,  // 50 MB
+    maxDepth: 32,
+    maxObjectKeys: 10_000,
+    maxArrayLength: 100_000
+)
+```
+
+## Thread safety and instance reuse
+
+Both `ToonEncoder` and `ToonDecoder` are **not thread-safe**. To maximize throughput in concurrent environments:
+
+- Create a pool of encoder/decoder instances, one per thread.
+- Avoid shared mutable state between encoding operations.
+- Configuration is applied once at setup time; there is no per-call overhead from re-reading settings.
+
+<CardGroup cols={2}>
+  <Card title="Encoding" icon="arrow-up-from-bracket" href="/guides/encoding">
+    All ToonEncoder configuration options including acceleration.
+  </Card>
+  <Card title="Decoding" icon="arrow-down-to-bracket" href="/guides/decoding">
+    ToonDecoder limits and acceleration configuration.
+  </Card>
+  <Card title="Metal acceleration" icon="bolt" href="/concepts/metal-acceleration">
+    Deep dive into the Metal backend architecture.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle limit errors thrown during decoding.
+  </Card>
+</CardGroup>

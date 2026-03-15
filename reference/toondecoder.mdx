@@ -1,0 +1,255 @@
+---
+title: "ToonDecoder"
+description: "Complete API reference for ToonDecoder — the class that deserializes TOON-format data into Decodable values."
+---
+
+## Declaration
+
+```swift
+public final class ToonDecoder
+```
+
+`ToonDecoder` mirrors the design of Foundation's `JSONDecoder`: configure an instance once, then call `decode(_:from:)` as many times as needed.
+
+```swift
+let decoder = ToonDecoder()
+decoder.expandPaths = .safe     // expand dotted keys into nested objects
+
+let user = try decoder.decode(User.self, from: toonData)
+```
+
+<Note>
+`ToonDecoder` accepts UTF-8 encoded TOON text conforming to specification version 3.0. Invalid UTF-8 or malformed TOON will throw a `ToonDecodingError`.
+</Note>
+
+<Note>
+`ToonDecoder` is **not thread-safe**. Create a separate instance per thread.
+</Note>
+
+---
+
+## Initialization
+
+```swift
+public init()
+```
+
+Creates a decoder with all properties set to their default values.
+
+---
+
+## Instance Properties
+
+<ParamField path="expandPaths" type="PathExpansion">
+Determines how dotted keys (e.g., `user.profile.name`) are interpreted during decoding. This is the inverse of `ToonEncoder.KeyFolding`.
+
+**Default:** `.automatic`
+
+```swift
+decoder.expandPaths = .safe   // throw on collision rather than falling back
+```
+</ParamField>
+
+<ParamField path="limits" type="Limits">
+Resource limits applied during decoding.
+
+**Default:** `.default`
+
+```swift
+decoder.limits = ToonDecoder.Limits(
+    maxInputSize: 5 * 1024 * 1024,  // 5 MB
+    maxDepth: 16,
+    maxObjectKeys: 5_000,
+    maxArrayLength: 50_000
+)
+```
+</ParamField>
+
+<ParamField path="acceleration" type="Acceleration">
+Optional Metal-backed acceleration for large decoding workloads.
+
+**Default:** `.disabled`
+
+```swift
+decoder.acceleration = .metal()  // enable for tabular arrays with >= 512 cells
+```
+</ParamField>
+
+---
+
+## Static Properties
+
+<ParamField path="isMetalAccelerationAvailable" type="Bool">
+Returns `true` when the current process can create the Metal pipeline used by `.metal(minimumCellCount:)`.
+
+```swift
+if ToonDecoder.isMetalAccelerationAvailable {
+    decoder.acceleration = .metal()
+}
+```
+</ParamField>
+
+---
+
+## Methods
+
+### decode(\_:\_:)
+
+```swift
+public func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T
+```
+
+Decodes a `Decodable` value from TOON-format data.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `type` | `T.Type` | The Swift type to decode into. |
+| `data` | `Data` | UTF-8 encoded TOON text. |
+
+**Returns:** The decoded value of type `T`.
+
+**Throws:** `ToonDecodingError` for any parse or type error.
+
+```swift
+struct User: Decodable {
+    let id: Int
+    let name: String
+    let tags: [String]
+}
+
+let toon = """
+    id: 42
+    name: Ada
+    tags[2]: reading,coding
+    """.data(using: .utf8)!
+
+let decoder = ToonDecoder()
+let user = try decoder.decode(User.self, from: toon)
+// user.id == 42, user.name == "Ada", user.tags == ["reading", "coding"]
+```
+
+---
+
+## Nested Types
+
+<AccordionGroup>
+
+<Accordion title="PathExpansion">
+
+```swift
+public enum PathExpansion: Hashable, Sendable
+```
+
+How dotted keys are handled during decoding. A dotted key like `user.profile.name` can be either a literal key whose name contains dots, or a path that should be expanded into nested objects.
+
+| Case | Behavior |
+|------|----------|
+| `.automatic` | Expand dotted keys into nested objects, falling back to literal keys on collision instead of throwing. **(Default)** |
+| `.disabled` | Never expand dotted keys; treat them as literal string keys. |
+| `.safe` | Expand dotted keys strictly, throwing `ToonDecodingError.pathCollision(path:line:)` on conflict. |
+
+```swift
+// Automatic expansion — safest for unknown sources
+decoder.expandPaths = .automatic
+
+// Treat dots as part of the literal key name
+decoder.expandPaths = .disabled
+
+// Strict expansion — fail loudly on collision
+decoder.expandPaths = .safe
+```
+
+<Tip>
+Use `.disabled` when your data model intentionally contains dot characters in key names.
+</Tip>
+
+</Accordion>
+
+<Accordion title="Acceleration">
+
+```swift
+public enum Acceleration: Hashable, Sendable
+```
+
+Optional backend used to accelerate large decoding workloads via Metal.
+
+| Case | Behavior |
+|------|----------|
+| `.disabled` | Always use the built-in CPU implementation. **(Default)** |
+| `.metal(minimumCellCount: Int = 512)` | Use Metal for tabular arrays that meet the minimum cell count. |
+| `.metalForced` | Force the Metal backend when available, without threshold gating. Useful for benchmarking. |
+
+```swift
+// Adaptive Metal acceleration (default threshold: 512 cells)
+decoder.acceleration = .metal()
+
+// Custom threshold: only use Metal for very large tables
+decoder.acceleration = .metal(minimumCellCount: 2_048)
+
+// Force Metal for benchmarking
+decoder.acceleration = .metalForced
+```
+
+</Accordion>
+
+<Accordion title="Limits">
+
+```swift
+public struct Limits: Hashable, Sendable
+```
+
+Limits that cap resource consumption during decoding.
+
+<ParamField path="maxInputSize" type="Int">
+Maximum bytes allowed in the input. **Default:** `10 * 1024 * 1024` (10 MB).
+</ParamField>
+
+<ParamField path="maxDepth" type="Int">
+Maximum object nesting depth. **Default:** `32`.
+</ParamField>
+
+<ParamField path="maxObjectKeys" type="Int">
+Maximum number of keys in a single object. **Default:** `10_000`.
+</ParamField>
+
+<ParamField path="maxArrayLength" type="Int">
+Maximum number of elements in a single array. **Default:** `100_000`.
+</ParamField>
+
+**Static instances:**
+
+| Name | `maxInputSize` | `maxDepth` | `maxObjectKeys` | `maxArrayLength` |
+|------|----------------|------------|-----------------|------------------|
+| `.default` | 10 MB | 32 | 10,000 | 100,000 |
+| `.unlimited` | `Int.max` | `Int.max` | `Int.max` | `Int.max` |
+
+```swift
+// Tighten limits for a public-facing API
+decoder.limits = ToonDecoder.Limits(
+    maxInputSize: 1 * 1024 * 1024,
+    maxDepth: 8,
+    maxObjectKeys: 1_000,
+    maxArrayLength: 10_000
+)
+```
+
+<Warning>
+**Never use `.unlimited` with untrusted input.** Malicious data can cause excessive memory usage, stack overflow from deep nesting, or denial-of-service attacks.
+</Warning>
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="ToonEncoder" href="/reference/toonencoder">
+    Serialize Swift Encodable types into TOON-format data.
+  </Card>
+  <Card title="ToonDecodingError" href="/reference/toondecodingerror">
+    All error cases thrown during decoding.
+  </Card>
+</CardGroup>

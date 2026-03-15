@@ -1,0 +1,349 @@
+---
+title: "ToonEncoder"
+description: "Complete API reference for ToonEncoder — the class that serializes Encodable values into TOON-format data."
+---
+
+## Declaration
+
+```swift
+public final class ToonEncoder
+```
+
+`ToonEncoder` mirrors the design of Foundation's `JSONEncoder`: configure an instance once, then call `encode(_:)` as many times as needed.
+
+```swift
+let encoder = ToonEncoder()
+encoder.delimiter = .tab       // tab-separated arrays for extra efficiency
+encoder.keyFolding = .safe     // fold { a: { b: 1 } } → a.b: 1
+
+let data = try encoder.encode(myValue)
+let toon = String(data: data, encoding: .utf8)!
+```
+
+<Note>
+`ToonEncoder` is **not thread-safe**. Create a separate instance per thread, or protect access with a lock if sharing is required.
+</Note>
+
+---
+
+## Initialization
+
+```swift
+public init()
+```
+
+Creates an encoder with all properties set to their default values. Configure the properties you need before calling `encode(_:)`.
+
+---
+
+## Instance Properties
+
+<ParamField path="indent" type="Int">
+Number of spaces per indentation level.
+
+**Default:** `2`
+
+```swift
+encoder.indent = 4
+```
+</ParamField>
+
+<ParamField path="delimiter" type="Delimiter">
+The delimiter character separating values in inline arrays and tabular rows.
+
+**Default:** `.comma`
+
+```swift
+encoder.delimiter = .tab   // use tabs when values may contain commas
+```
+</ParamField>
+
+<ParamField path="negativeZeroStrategy" type="NegativeZeroStrategy">
+Controls how the IEEE 754 value `-0.0` is encoded.
+
+**Default:** `.normalize`
+
+```swift
+encoder.negativeZeroStrategy = .preserve  // emit -0 in the output
+```
+</ParamField>
+
+<ParamField path="nonFiniteFloatStrategy" type="NonFiniteFloatStrategy">
+Controls how `nan`, `inf`, and `-inf` are encoded.
+
+**Default:** `.null`
+
+```swift
+encoder.nonFiniteFloatStrategy = .convertToString(
+    positiveInfinity: "Inf",
+    negativeInfinity: "-Inf",
+    nan: "NaN"
+)
+```
+</ParamField>
+
+<ParamField path="keyFolding" type="KeyFolding">
+Whether to collapse chains of single-key objects into dotted path keys.
+
+**Default:** `.disabled`
+
+```swift
+encoder.keyFolding = .safe
+// { user: { profile: { name: Ada } } } → user.profile.name: Ada
+```
+</ParamField>
+
+<ParamField path="flattenDepth" type="Int">
+Maximum path depth applied when `keyFolding` is `.safe`. Chains longer than this value are not folded.
+
+**Default:** `Int.max` (unlimited)
+
+```swift
+encoder.keyFolding  = .safe
+encoder.flattenDepth = 3   // only fold paths up to 3 segments deep
+```
+</ParamField>
+
+<ParamField path="limits" type="Limits">
+Resource limits applied during encoding.
+
+**Default:** `.default` (`maxDepth` = 32)
+
+```swift
+encoder.limits = Limits(maxDepth: 16)
+```
+</ParamField>
+
+<ParamField path="acceleration" type="Acceleration">
+Optional Metal-backed acceleration for large string serialization workloads.
+
+**Default:** `.disabled`
+
+```swift
+encoder.acceleration = .metal()  // enable when strings exceed 16 KB
+```
+</ParamField>
+
+---
+
+## Static Properties
+
+<ParamField path="isMetalAccelerationAvailable" type="Bool">
+Returns `true` when the current process can create the Metal pipeline used by `.metal(minimumStringByteCount:)`.
+
+```swift
+if ToonEncoder.isMetalAccelerationAvailable {
+    encoder.acceleration = .metal()
+}
+```
+</ParamField>
+
+<ParamField path="isMetalAccelerationEnabled" type="Bool">
+Returns `true` when the adaptive speed gate has enabled the Metal backend for the current process.
+</ParamField>
+
+---
+
+## Methods
+
+### encode(\_:)
+
+```swift
+public func encode<T: Encodable>(_ value: T) throws -> Data
+```
+
+Encodes `value` and returns its UTF-8 TOON representation.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `value` | `T: Encodable` | The value to encode. |
+
+**Returns:** `Data` containing the UTF-8 encoded TOON text.
+
+**Throws:** `EncodingError` on failure. Also throws `EncodingError` if `nonFiniteFloatStrategy` is `.throw` and a non-finite `Double` or `Float` is encountered.
+
+```swift
+struct Point: Encodable {
+    let x: Double
+    let y: Double
+}
+
+let encoder = ToonEncoder()
+let data = try encoder.encode(Point(x: 1.5, y: 2.5))
+print(String(data: data, encoding: .utf8)!)
+// x: 1.5
+// y: 2.5
+```
+
+---
+
+## Nested Types
+
+<AccordionGroup>
+
+<Accordion title="Delimiter">
+
+```swift
+public enum Delimiter: String, CaseIterable, Hashable, Sendable
+```
+
+The delimiter character separating values in inline arrays and tabular rows.
+
+| Case | Raw value | Description |
+|------|-----------|-------------|
+| `.comma` | `","` | Default. Most compatible with standard tooling. |
+| `.tab` | `"\t"` | Useful when values may contain commas. |
+| `.pipe` | `"|"` | Readable alternative for human-edited files. |
+
+```swift
+encoder.delimiter = .pipe
+// tags[3]: reading|coding|swift
+```
+
+</Accordion>
+
+<Accordion title="NegativeZeroStrategy">
+
+```swift
+public enum NegativeZeroStrategy: Hashable, Sendable
+```
+
+How to handle the IEEE 754 negative-zero value `-0.0`.
+
+| Case | Behavior |
+|------|----------|
+| `.normalize` | Encode `-0.0` as `0`. **(Default)** |
+| `.preserve` | Encode `-0.0` as the literal `-0`. |
+
+```swift
+encoder.negativeZeroStrategy = .preserve
+let data = try encoder.encode(-0.0)
+// Output: -0
+```
+
+</Accordion>
+
+<Accordion title="NonFiniteFloatStrategy">
+
+```swift
+public enum NonFiniteFloatStrategy: Hashable, Sendable
+```
+
+How to handle non-finite floating-point values (`nan`, `inf`, `-inf`).
+
+| Case | Behavior |
+|------|----------|
+| `.null` | Encode as the TOON `null` literal. **(Default)** |
+| `.throw` | Throw an `EncodingError` immediately. |
+| `.convertToString(positiveInfinity:negativeInfinity:nan:)` | Encode as configurable string literals. |
+
+```swift
+// Emit null for non-finite values (default)
+encoder.nonFiniteFloatStrategy = .null
+
+// Throw on any non-finite value
+encoder.nonFiniteFloatStrategy = .throw
+
+// Encode as strings
+encoder.nonFiniteFloatStrategy = .convertToString(
+    positiveInfinity: "Inf",
+    negativeInfinity: "-Inf",
+    nan: "NaN"
+)
+```
+
+</Accordion>
+
+<Accordion title="Acceleration">
+
+```swift
+public enum Acceleration: Hashable, Sendable
+```
+
+Optional backend used to accelerate large string serialization workloads via Metal.
+
+| Case | Behavior |
+|------|----------|
+| `.disabled` | Always use the built-in CPU implementation. **(Default)** |
+| `.metal(minimumStringByteCount: Int = 16_384)` | Use Metal when available and the string is at least `minimumStringByteCount` UTF-8 bytes long. |
+| `.metalForced(minimumStringByteCount: Int = 16_384)` | Force the Metal backend when available, bypassing the adaptive speed gate. Useful for benchmarking. |
+
+```swift
+// Adaptive Metal acceleration for strings >= 16 KB
+encoder.acceleration = .metal()
+
+// Custom threshold: only kick in for strings >= 64 KB
+encoder.acceleration = .metal(minimumStringByteCount: 65_536)
+
+// Force Metal regardless of speed gate (benchmarking only)
+encoder.acceleration = .metalForced()
+```
+
+</Accordion>
+
+<Accordion title="KeyFolding">
+
+```swift
+public enum KeyFolding: Hashable, Sendable
+```
+
+Whether to collapse chains of single-key objects into dotted path keys.
+
+| Case | Behavior |
+|------|----------|
+| `.disabled` | No folding — every nesting level is indented. **(Default)** |
+| `.safe` | Fold when all path segments contain only letters, digits, and `_`. |
+
+```swift
+encoder.keyFolding = .safe
+// Before: user:
+//           profile:
+//             name: Ada
+// After:  user.profile.name: Ada
+```
+
+</Accordion>
+
+<Accordion title="Limits">
+
+```swift
+public struct Limits: Hashable, Sendable
+```
+
+Limits that cap resource consumption during encoding.
+
+<ParamField path="maxDepth" type="Int">
+Maximum nesting depth. **Default:** `32`.
+</ParamField>
+
+**Static instances:**
+
+| Name | `maxDepth` | Description |
+|------|-----------|-------------|
+| `.default` | `32` | Sensible defaults for production use. |
+| `.unlimited` | `Int.max` | No limits. Use only with fully trusted data. |
+
+```swift
+// Tighter limit for public API endpoints
+encoder.limits = Limits(maxDepth: 16)
+
+// Remove limits entirely for trusted internal data
+encoder.limits = .unlimited
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="ToonDecoder" href="/reference/toondecoder">
+    Deserialize TOON-format data into Swift Decodable types.
+  </Card>
+  <Card title="ToonDecodingError" href="/reference/toondecodingerror">
+    All error cases thrown during decoding.
+  </Card>
+</CardGroup>

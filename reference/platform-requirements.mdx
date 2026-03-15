@@ -1,0 +1,99 @@
+---
+title: "Platform requirements"
+description: "Supported platforms, OS versions, and Swift toolchain requirements for ToonKit."
+---
+
+## Supported Platforms
+
+| Platform | Minimum Version |
+|----------|----------------|
+| iOS | 16.0+ |
+| macOS | 13.0+ |
+| watchOS | 9.0+ |
+| tvOS | 16.0+ |
+| visionOS | 1.0+ |
+| Swift | 5.9+ |
+
+---
+
+## Swift Package Manager
+
+ToonKit requires Swift Package Manager tools version **5.9** or later.
+
+The `platforms` array in `Package.swift` declares the minimum deployment targets:
+
+```swift
+// swift-tools-version: 5.9
+
+import PackageDescription
+
+let package = Package(
+    name: "Toon",
+    platforms: [
+        .iOS(.v16),
+        .macOS(.v13),
+        .watchOS(.v9),
+        .tvOS(.v16),
+        .visionOS(.v1),
+    ],
+    products: [
+        .library(name: "Toon", targets: ["Toon"]),
+    ],
+    ...
+)
+```
+
+To add ToonKit as a dependency, include it in your own `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/toon-format/toonkit", from: "1.0.0"),
+],
+targets: [
+    .target(
+        name: "MyTarget",
+        dependencies: ["Toon"]
+    ),
+]
+```
+
+Then import the module in your Swift files:
+
+```swift
+import Toon
+```
+
+---
+
+## Metal Acceleration
+
+<Note>
+Metal acceleration is available on **macOS 13+** and **iOS 16+** devices equipped with Apple Silicon (M-series) or A-series chips. Metal is not available on watchOS, tvOS, or simulator targets. On unsupported hardware, `ToonEncoder.isMetalAccelerationAvailable` and `ToonDecoder.isMetalAccelerationAvailable` return `false`, and the CPU implementation is used automatically regardless of the configured `acceleration` setting.
+</Note>
+
+Check availability at runtime before enabling Metal:
+
+```swift
+let encoder = ToonEncoder()
+if ToonEncoder.isMetalAccelerationAvailable {
+    encoder.acceleration = .metal()   // strings >= 16 KB use the GPU pipeline
+}
+
+let decoder = ToonDecoder()
+if ToonDecoder.isMetalAccelerationAvailable {
+    decoder.acceleration = .metal()   // tabular arrays >= 512 cells use the GPU pipeline
+}
+```
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="ToonEncoder" href="/reference/toonencoder">
+    Encoder API reference, including Acceleration options.
+  </Card>
+  <Card title="ToonDecoder" href="/reference/toondecoder">
+    Decoder API reference, including Acceleration options.
+  </Card>
+</CardGroup>

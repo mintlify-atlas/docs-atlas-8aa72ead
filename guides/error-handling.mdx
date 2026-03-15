@@ -1,0 +1,172 @@
+---
+title: "Error handling"
+description: "Understand and handle ToonDecodingError cases and encoder errors."
+---
+
+ToonKit uses typed errors so you can respond precisely to every failure mode. Decoding throws `ToonDecodingError`. Encoding throws Foundation's `EncodingError` only when `nonFiniteFloatStrategy` is `.throw`.
+
+## ToonDecodingError
+
+All decoding failures surface as `ToonDecodingError` cases. The cases fall into five families:
+
+<AccordionGroup>
+  <Accordion title="Parse errors">
+    Thrown when the raw TOON text cannot be interpreted.
+
+    | Case | Description |
+    |---|---|
+    | `.invalidFormat(String)` | The input is not valid TOON. The associated string contains a description. |
+    | `.invalidIndentation(line:message:)` | A line's indentation depth is unexpected. |
+    | `.invalidEscapeSequence(String)` | A quoted string contains an unrecognised escape sequence. |
+  </Accordion>
+  <Accordion title="Structural errors">
+    Thrown when the TOON structure violates its own declared shape.
+
+    | Case | Description |
+    |---|---|
+    | `.countMismatch(expected:actual:line:)` | An array has fewer or more elements than declared in its header (e.g. `tags[3]: a,b`). |
+    | `.fieldCountMismatch(expected:actual:line:)` | A tabular row has a different number of fields than the column header. |
+    | `.unexpectedBlankLine(line:)` | A blank line appeared inside a fixed-count array body where blank lines are not permitted. |
+    | `.invalidHeader(String)` | An array header line is syntactically invalid. |
+  </Accordion>
+  <Accordion title="Decoding errors">
+    Thrown when a value is present but cannot be decoded into the requested Swift type.
+
+    | Case | Description |
+    |---|---|
+    | `.typeMismatch(expected:actual:)` | The TOON value at a key is a different type than requested (e.g. decoding an `Int` from a `bool`). |
+    | `.keyNotFound(String)` | A required key is absent from the object being decoded. |
+    | `.dataCorrupted(String)` | A value is present but cannot be converted to the target type (e.g. an integer outside the range of `Int8`). |
+  </Accordion>
+  <Accordion title="Path expansion errors">
+    Thrown only when `expandPaths` is `.safe`.
+
+    | Case | Description |
+    |---|---|
+    | `.pathCollision(path:line:)` | A dotted key could not be expanded because it collided with an existing key. In `.automatic` mode the key is preserved as-is instead of throwing. |
+  </Accordion>
+  <Accordion title="Limit errors">
+    Thrown when input exceeds the configured `ToonDecoder.Limits`.
+
+    | Case | Description |
+    |---|---|
+    | `.inputTooLarge(size:limit:)` | The input data exceeds `maxInputSize`. |
+    | `.depthLimitExceeded(depth:limit:)` | The TOON structure exceeds the `maxDepth` nesting limit. |
+    | `.objectKeyLimitExceeded(count:limit:)` | An object has more keys than `maxObjectKeys` permits. |
+    | `.arrayLengthLimitExceeded(length:limit:)` | An array exceeds the `maxArrayLength` limit. |
+  </Accordion>
+</AccordionGroup>
+
+## Handling errors in practice
+
+The pattern below covers all five error families in a single `switch`:
+
+```swift Complete error handling switch
+do {
+    let value = try decoder.decode(MyType.self, from: data)
+} catch let error as ToonDecodingError {
+    switch error {
+
+    // Parse errors
+    case .invalidFormat(let msg):
+        print("Parse error:", msg)
+    case .invalidIndentation(let line, let msg):
+        print("Bad indentation at line \(line):", msg)
+    case .invalidEscapeSequence(let seq):
+        print("Invalid escape sequence:", seq)
+
+    // Structural errors
+    case .countMismatch(let expected, let actual, let line):
+        print("Array count mismatch at line \(line): expected \(expected), got \(actual)")
+    case .fieldCountMismatch(let expected, let actual, let line):
+        print("Field count mismatch at line \(line): expected \(expected), got \(actual)")
+    case .unexpectedBlankLine(let line):
+        print("Unexpected blank line at line \(line)")
+    case .invalidHeader(let msg):
+        print("Invalid header:", msg)
+
+    // Decoding errors
+    case .typeMismatch(let expected, let got):
+        print("Expected \(expected), got \(got)")
+    case .keyNotFound(let key):
+        print("Missing key:", key)
+    case .dataCorrupted(let msg):
+        print("Data corrupted:", msg)
+
+    // Path expansion error (.safe mode only)
+    case .pathCollision(let path, let line):
+        print("Path collision at line \(line):", path)
+
+    // Limit errors
+    case .inputTooLarge(let size, let limit):
+        print("Input too large: \(size) bytes (limit: \(limit))")
+    case .depthLimitExceeded(let depth, let limit):
+        print("Depth limit exceeded: \(depth) (limit: \(limit))")
+    case .objectKeyLimitExceeded(let count, let limit):
+        print("Too many object keys: \(count) (limit: \(limit))")
+    case .arrayLengthLimitExceeded(let length, let limit):
+        print("Array too long: \(length) (limit: \(limit))")
+    }
+} catch {
+    print("Unexpected error:", error)
+}
+```
+
+For many call sites, handling only the most actionable cases is sufficient:
+
+```swift Minimal error handling
+do {
+    let value = try decoder.decode(MyType.self, from: data)
+} catch let error as ToonDecodingError {
+    switch error {
+    case .invalidFormat(let msg):
+        print("Parse error:", msg)
+    case .typeMismatch(let exp, let got):
+        print("Expected \(exp), got \(got)")
+    case .keyNotFound(let key):
+        print("Missing key:", key)
+    case .inputTooLarge:
+        print("Input too large")
+    default:
+        print("Decoding error:", error)
+    }
+}
+```
+
+## Encoder errors
+
+`ToonEncoder.encode(_:)` throws Foundation's `EncodingError` in one situation: when `nonFiniteFloatStrategy` is set to `.throw` and the value graph contains a non-finite `Double` or `Float` (`nan`, `inf`, or `-inf`).
+
+```swift Encoder error from .throw strategy
+encoder.nonFiniteFloatStrategy = .throw
+
+do {
+    let data = try encoder.encode(myValue)
+} catch let error as EncodingError {
+    if case .invalidValue(let value, let context) = error {
+        print("Non-finite float:", value)
+        print("At path:", context.codingPath)
+    }
+}
+```
+
+All other `ToonEncoder` failures are programming errors (e.g. exceeding `maxDepth`) and surface as `EncodingError.invalidValue` as well.
+
+<Tip>
+  Use `.automatic` path expansion in production. It never throws `.pathCollision` and handles both folded and literal dotted keys gracefully, giving you resilience against unexpected input shapes.
+</Tip>
+
+<CardGroup cols={2}>
+  <Card title="Encoding" icon="arrow-up-from-bracket" href="/guides/encoding">
+    Configure nonFiniteFloatStrategy and other encoder options.
+  </Card>
+  <Card title="Decoding" icon="arrow-down-to-bracket" href="/guides/decoding">
+    Configure expandPaths and Limits on ToonDecoder.
+  </Card>
+  <Card title="Foundation types" icon="calendar" href="/guides/foundation-types">
+    Understand dataCorrupted errors for Date, URL, and Data.
+  </Card>
+  <Card title="Performance tuning" icon="gauge-high" href="/guides/performance-tuning">
+    Set appropriate limits to reduce overhead and avoid limit errors.
+  </Card>
+</CardGroup>

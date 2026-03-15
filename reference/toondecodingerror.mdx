@@ -1,0 +1,255 @@
+---
+title: "ToonDecodingError"
+description: "Complete reference for all error cases thrown by ToonDecoder during parsing, structural validation, and type decoding."
+---
+
+## Declaration
+
+```swift
+public enum ToonDecodingError: Error, Equatable
+```
+
+`ToonDecodingError` is thrown by `ToonDecoder.decode(_:from:)` for any parse, structural, or type error encountered while reading TOON-format input.
+
+<Note>
+`EncodingError` (from Foundation) is thrown by `ToonEncoder.encode(_:)` — not `ToonDecodingError`. `ToonDecodingError` is exclusive to the decoding path. `EncodingError` is thrown by the encoder when `nonFiniteFloatStrategy` is set to `.throw` and a non-finite `Double` or `Float` is encountered.
+</Note>
+
+---
+
+## Error Cases
+
+<AccordionGroup>
+
+<Accordion title="Parse Errors">
+
+Thrown when the raw input bytes cannot be interpreted as valid TOON text.
+
+### `invalidFormat(_ message: String)`
+
+```swift
+case invalidFormat(String)
+```
+
+The input could not be interpreted as valid TOON. The associated `String` contains a human-readable description of the problem.
+
+```swift
+// Thrown for non-UTF-8 data or structurally nonsensical input
+throw ToonDecodingError.invalidFormat("Input is not valid UTF-8")
+```
+
+### `invalidIndentation(line:message:)`
+
+```swift
+case invalidIndentation(line: Int, message: String)
+```
+
+A line's indentation depth was unexpected given the surrounding structure. `line` is 1-based.
+
+```swift
+// Example: a child key indented further than any parent allows
+throw ToonDecodingError.invalidIndentation(line: 7, message: "unexpected indent level 6")
+```
+
+### `invalidEscapeSequence(_ sequence: String)`
+
+```swift
+case invalidEscapeSequence(String)
+```
+
+A quoted string contained an unrecognised escape sequence. The associated `String` contains the offending sequence.
+
+```swift
+throw ToonDecodingError.invalidEscapeSequence("\\q")
+```
+
+</Accordion>
+
+<Accordion title="Structural Errors">
+
+Thrown when the TOON document is syntactically valid but internally inconsistent.
+
+### `countMismatch(expected:actual:line:)`
+
+```swift
+case countMismatch(expected: Int, actual: Int, line: Int)
+```
+
+An array had fewer or more elements than declared in its header. For example, `tags[3]: a,b` declares 3 elements but only provides 2.
+
+### `fieldCountMismatch(expected:actual:line:)`
+
+```swift
+case fieldCountMismatch(expected: Int, actual: Int, line: Int)
+```
+
+A tabular row had a different number of fields than the column header declared.
+
+### `unexpectedBlankLine(line:)`
+
+```swift
+case unexpectedBlankLine(line: Int)
+```
+
+A blank line appeared inside a fixed-count array body where blank lines are not permitted.
+
+### `invalidHeader(_ description: String)`
+
+```swift
+case invalidHeader(String)
+```
+
+An array header line was syntactically invalid. The associated `String` contains the offending header text.
+
+</Accordion>
+
+<Accordion title="Decoding Errors">
+
+Thrown when the structure is valid but the data cannot be mapped to the requested Swift types.
+
+### `typeMismatch(expected:actual:)`
+
+```swift
+case typeMismatch(expected: String, actual: String)
+```
+
+The TOON value at a key was a different type than the one requested. For example, decoding an `Int` from a `bool` value.
+
+```swift
+// Input:  active: true
+// Request: decoder.decode(Int.self, ...)
+throw ToonDecodingError.typeMismatch(expected: "Int", actual: "bool")
+```
+
+### `keyNotFound(_ key: String)`
+
+```swift
+case keyNotFound(String)
+```
+
+A required key was absent from the object being decoded.
+
+### `dataCorrupted(_ message: String)`
+
+```swift
+case dataCorrupted(String)
+```
+
+A value was present but could not be converted to the target type. For example, an integer that is outside the range of `Int8`.
+
+</Accordion>
+
+<Accordion title="Path Expansion Errors">
+
+Thrown only when `ToonDecoder.expandPaths` is set to `.safe`.
+
+### `pathCollision(path:line:)`
+
+```swift
+case pathCollision(path: String, line: Int)
+```
+
+A dotted key could not be expanded because it would conflict with an existing key. `path` is the dotted key string, and `line` is the 1-based line number where the collision was detected.
+
+```swift
+// Only thrown when expandPaths == .safe
+// In .automatic mode, the key is preserved as-is instead
+throw ToonDecodingError.pathCollision(path: "user.id", line: 12)
+```
+
+<Note>
+In `.automatic` mode, collisions are silently resolved by preserving the dotted key as a literal string key instead of raising an error. Switch to `.safe` if you need strict enforcement.
+</Note>
+
+</Accordion>
+
+<Accordion title="Limit Errors">
+
+Thrown when the input exceeds the limits configured on `ToonDecoder.limits`.
+
+### `inputTooLarge(size:limit:)`
+
+```swift
+case inputTooLarge(size: Int, limit: Int)
+```
+
+The input data exceeded the `maxInputSize` limit. Both `size` (actual byte count) and `limit` (configured maximum) are included.
+
+### `depthLimitExceeded(depth:limit:)`
+
+```swift
+case depthLimitExceeded(depth: Int, limit: Int)
+```
+
+The TOON structure's nesting exceeds the `maxDepth` limit.
+
+### `objectKeyLimitExceeded(count:limit:)`
+
+```swift
+case objectKeyLimitExceeded(count: Int, limit: Int)
+```
+
+A single object contains more keys than `maxObjectKeys` permits.
+
+### `arrayLengthLimitExceeded(length:limit:)`
+
+```swift
+case arrayLengthLimitExceeded(length: Int, limit: Int)
+```
+
+A single array contains more elements than `maxArrayLength` permits.
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Handling Errors
+
+The following example catches all major error families:
+
+```swift
+do {
+    let value = try decoder.decode(MyType.self, from: data)
+} catch ToonDecodingError.inputTooLarge(let size, let limit) {
+    print("Input too large: \(size) bytes (limit: \(limit))")
+} catch ToonDecodingError.depthLimitExceeded(let depth, let limit) {
+    print("Nesting too deep: \(depth) levels (limit: \(limit))")
+} catch ToonDecodingError.objectKeyLimitExceeded(let count, let limit) {
+    print("Too many object keys: \(count) (limit: \(limit))")
+} catch ToonDecodingError.arrayLengthLimitExceeded(let length, let limit) {
+    print("Array too long: \(length) (limit: \(limit))")
+} catch ToonDecodingError.typeMismatch(let expected, let actual) {
+    print("Type mismatch: expected \(expected), got \(actual)")
+} catch ToonDecodingError.keyNotFound(let key) {
+    print("Missing key: \(key)")
+} catch ToonDecodingError.dataCorrupted(let message) {
+    print("Data corrupted: \(message)")
+} catch ToonDecodingError.invalidFormat(let message) {
+    print("Invalid TOON format: \(message)")
+} catch ToonDecodingError.invalidIndentation(let line, let message) {
+    print("Bad indentation on line \(line): \(message)")
+} catch ToonDecodingError.countMismatch(let expected, let actual, let line) {
+    print("Count mismatch on line \(line): expected \(expected), got \(actual)")
+} catch ToonDecodingError.fieldCountMismatch(let expected, let actual, let line) {
+    print("Field count mismatch on line \(line): expected \(expected), got \(actual)")
+} catch ToonDecodingError.pathCollision(let path, let line) {
+    print("Path collision for '\(path)' on line \(line)")
+} catch {
+    print("Unexpected error: \(error)")
+}
+```
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="ToonDecoder" href="/reference/toondecoder">
+    The decoder that throws these errors.
+  </Card>
+  <Card title="ToonEncoder" href="/reference/toonencoder">
+    The encoder — throws Foundation's EncodingError, not ToonDecodingError.
+  </Card>
+</CardGroup>

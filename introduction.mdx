@@ -1,0 +1,81 @@
+---
+title: "Introduction"
+description: "ToonKit is a Metal-accelerated Swift library that serializes Codable types to TOON format, cutting LLM token usage by 30–60% compared to JSON."
+---
+
+## What is ToonKit?
+
+ToonKit is a high-performance Swift implementation of **TOON** (Token-Oriented Object Notation), built for production Apple-platform workloads. It is designed for teams shipping AI and data-intensive features who need to reduce the token footprint of structured data sent to LLMs — without changing their existing `Codable` models.
+
+ToonKit delivers two core advantages:
+
+- **Lower LLM token cost**: TOON typically reduces token usage by **30–60% vs JSON** by eliminating structural verbosity before data reaches a model's context window.
+- **Adaptive high-throughput serialization**: optional Metal GPU acceleration with runtime gating ensures the fast path is used only when it is actually faster on the current machine and workload.
+
+## What is TOON?
+
+TOON (Token-Oriented Object Notation) is a compact, human-readable serialization format designed to minimize LLM token usage. It achieves its token savings by combining three ideas:
+
+| Technique | What it does |
+|---|---|
+| YAML-style indentation | Expresses nested structure without quotation marks or braces |
+| CSV-style tabular rows | Encodes uniform arrays of objects in a dense, row-based layout |
+| Declared length prefixes | Arrays declare their element count (`tags[3]: a,b,c`) so parsers can validate bounds |
+
+ToonKit implements **TOON specification version 3.0** (2025-11-24).
+
+### Format example
+
+```toon
+name: Ada Lovelace
+age: 36
+active: true
+score: 9.8
+email: null
+
+tags[3]: coding,maths,logic
+
+address:
+  street: 1 Math Lane
+  city: London
+
+orders[2]{id,amount,status}:
+  1001,49.99,shipped
+  1002,12.50,pending
+```
+
+## Key benefits
+
+- **Token reduction** — 30–60% fewer tokens vs JSON means lower inference costs and larger effective context windows for structured payloads.
+- **`Codable` compatibility** — `ToonEncoder` and `ToonDecoder` mirror the design of Foundation's `JSONEncoder` / `JSONDecoder`. Drop-in adoption requires no model changes.
+- **Metal acceleration** — A GPU-backed string serialization path delivers up to **104x speedup** on large batched string encoding workloads. Dynamic mode gates the GPU path automatically so mixed or smaller workloads are not penalized.
+- **Production safety** — Configurable resource limits (`maxDepth`, `maxInputSize`, `maxObjectKeys`, `maxArrayLength`) protect against malicious or malformed input at runtime.
+
+## Platform support
+
+| Platform | Minimum version |
+|---|---:|
+| iOS | 16.0 |
+| macOS | 13.0 |
+| watchOS | 9.0 |
+| tvOS | 16.0 |
+| visionOS | 1.0 |
+
+Swift 5.9 or later is required.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="package" href="/installation">
+    Add ToonKit to your project with Swift Package Manager or Xcode.
+  </Card>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Encode and decode your first `Codable` type in under five minutes.
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="/concepts/toon-format">
+    Understand the TOON format, key folding, tabular arrays, and more.
+  </Card>
+  <Card title="Reference" icon="code" href="/reference/toonencoder">
+    Full API reference for `ToonEncoder`, `ToonDecoder`, and error types.
+  </Card>
+</CardGroup>

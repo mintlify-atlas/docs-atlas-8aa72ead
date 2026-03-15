@@ -1,0 +1,125 @@
+---
+title: "Codable integration"
+description: "How ToonEncoder and ToonDecoder integrate with Swift's Codable system."
+---
+
+ToonKit integrates with Swift's `Codable` system through two classes: `ToonEncoder` and `ToonDecoder`. Their design intentionally mirrors `JSONEncoder` and `JSONDecoder` — configure the instance once, then call `encode(_:)` or `decode(_:from:)` as many times as needed.
+
+## Encoding
+
+Pass any `Encodable` value to `ToonEncoder.encode(_:)`. It returns UTF-8 encoded `Data`.
+
+```swift
+import Toon
+
+struct User: Codable, Equatable {
+    let id: Int
+    let name: String
+    let tags: [String]
+}
+
+let user = User(id: 1, name: "Ada Lovelace", tags: ["coding", "maths"])
+
+let encoder = ToonEncoder()
+let data = try encoder.encode(user)
+// id: 1
+// name: Ada Lovelace
+// tags[2]: coding,maths
+```
+
+## Decoding
+
+Pass `Data` containing UTF-8 TOON text to `ToonDecoder.decode(_:from:)`.
+
+```swift
+let decoder = ToonDecoder()
+let decoded = try decoder.decode(User.self, from: data)
+assert(decoded == user)
+```
+
+## Supported types
+
+Any type conforming to `Encodable` or `Decodable` is supported:
+
+- Swift standard types: `String`, `Int`, `Int8`, `Int16`, `Int32`, `Int64`, `UInt`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, `Double`, `Float`, `Bool`
+- Foundation types: `Date` (ISO 8601), `URL` (absolute string), `Data` (Base64)
+- `Array`, `Dictionary`, `Optional`
+- Custom `Codable` structs and classes
+
+## Custom CodingKeys
+
+Custom `CodingKeys` work exactly as they do with `JSONEncoder` and `JSONDecoder` — this is standard Swift `Codable` behavior.
+
+```swift
+struct Product: Codable {
+    let productID: Int
+    let displayName: String
+
+    enum CodingKeys: String, CodingKey {
+        case productID = "product_id"
+        case displayName = "display_name"
+    }
+}
+```
+
+```toon
+product_id: 42
+display_name: Widget
+```
+
+<Note>
+  `ToonEncoder` and `ToonDecoder` instances are **not thread-safe**. Create a separate instance per thread, or protect shared access with a lock.
+</Note>
+
+## Encoder configuration
+
+Set properties on the encoder before calling `encode(_:)`.
+
+```swift
+let encoder = ToonEncoder()
+
+// Indentation
+encoder.indent = 4
+
+// Delimiter used in inline arrays and tabular rows
+encoder.delimiter = .tab   // .comma (default), .tab, .pipe
+
+// Negative zero handling
+encoder.negativeZeroStrategy = .preserve   // default: .normalize
+
+// Non-finite float handling
+encoder.nonFiniteFloatStrategy = .null
+// .throw
+// .convertToString(positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
+
+// Key folding: collapse single-key object chains into dotted keys
+encoder.keyFolding = .safe   // default: .disabled
+
+// Resource limits
+encoder.limits = ToonEncoder.Limits(maxDepth: 64)
+
+let data = try encoder.encode(myValue)
+```
+
+## Decoder configuration
+
+Set properties on the decoder before calling `decode(_:from:)`.
+
+```swift
+let decoder = ToonDecoder()
+
+// How to interpret dotted keys (e.g. user.profile.name)
+decoder.expandPaths = .automatic
+// .safe     — expand strictly, throw on collision
+// .disabled — treat dotted keys as literal key names
+
+// Resource limits
+decoder.limits = ToonDecoder.Limits(
+    maxInputSize: 10 * 1024 * 1024,
+    maxDepth: 32,
+    maxObjectKeys: 10_000,
+    maxArrayLength: 100_000
+)
+
+let value = try decoder.decode(MyType.self, from: data)
+```

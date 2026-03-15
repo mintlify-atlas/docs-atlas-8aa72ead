@@ -1,0 +1,237 @@
+---
+title: "Encoding"
+description: "Serialize Swift Codable values to TOON format using ToonEncoder."
+---
+
+`ToonEncoder` converts any `Encodable` value into UTF-8 TOON text. Its design mirrors Foundation's `JSONEncoder`: configure it once, then call `encode(_:)` as many times as needed.
+
+## Basic usage
+
+<Steps>
+  <Step title="Create an encoder">
+    ```swift Basic encoder setup
+    import Toon
+
+    let encoder = ToonEncoder()
+    ```
+  </Step>
+  <Step title="Encode a value">
+    ```swift Encoding a struct
+    struct User: Codable {
+        let id: Int
+        let name: String
+        let tags: [String]
+    }
+
+    let user = User(id: 1, name: "Ada Lovelace", tags: ["coding", "maths"])
+    let data = try encoder.encode(user)
+    let toon = String(data: data, encoding: .utf8)!
+    // id: 1
+    // name: Ada Lovelace
+    // tags[2]: coding,maths
+    ```
+  </Step>
+  <Step title="Decode it back (optional round-trip check)">
+    ```swift Round-trip
+    let decoder = ToonDecoder()
+    let decoded = try decoder.decode(User.self, from: data)
+    assert(decoded.id == user.id)
+    ```
+  </Step>
+</Steps>
+
+## Configuration options
+
+### `indent`
+
+Controls the number of spaces per indentation level. Defaults to `2`.
+
+```swift indent
+encoder.indent = 4
+```
+
+### `delimiter`
+
+The character used to separate values in inline arrays and tabular rows.
+
+| Case | Character | Use when |
+|---|---|---|
+| `.comma` | `,` | Default — most compatible |
+| `.tab` | `\t` | Values may contain commas |
+| `.pipe` | `\|` | Readable alternative for human-edited files |
+
+```swift delimiter options
+encoder.delimiter = .comma  // default
+encoder.delimiter = .tab
+encoder.delimiter = .pipe
+```
+
+<Tip>
+  Use `.tab` when your string values may contain commas. This avoids any escaping overhead and keeps the output unambiguous.
+</Tip>
+
+### `negativeZeroStrategy`
+
+Controls how the IEEE 754 value `-0.0` is encoded.
+
+```swift negativeZeroStrategy
+// Encode -0.0 as 0 (default)
+encoder.negativeZeroStrategy = .normalize
+
+// Preserve the -0 literal
+encoder.negativeZeroStrategy = .preserve
+```
+
+### `nonFiniteFloatStrategy`
+
+Controls how `nan`, `inf`, and `-inf` are encoded.
+
+<Tabs>
+  <Tab title=".null (default)">
+    ```swift Non-finite as null
+    encoder.nonFiniteFloatStrategy = .null
+    // nan → null
+    // inf → null
+    ```
+  </Tab>
+  <Tab title=".throw">
+    ```swift Throw on non-finite
+    encoder.nonFiniteFloatStrategy = .throw
+    // Throws EncodingError if any non-finite Double/Float is encountered
+    ```
+  </Tab>
+  <Tab title=".convertToString">
+    ```swift Non-finite as custom strings
+    encoder.nonFiniteFloatStrategy = .convertToString(
+        positiveInfinity: "Infinity",
+        negativeInfinity: "-Infinity",
+        nan: "NaN"
+    )
+    // inf  → Infinity
+    // -inf → -Infinity
+    // nan  → NaN
+    ```
+  </Tab>
+</Tabs>
+
+### `keyFolding`
+
+Collapses chains of single-key objects into dotted keys, reducing output size and indentation levels.
+
+```swift keyFolding
+// No folding — every level is indented (default)
+encoder.keyFolding = .disabled
+
+// Fold when all path segments are valid identifiers (letters, digits, _)
+encoder.keyFolding = .safe
+```
+
+**Before (`.disabled`):**
+
+```toon keyFolding disabled
+user:
+  profile:
+    name: Ada
+```
+
+**After (`.safe`):**
+
+```toon keyFolding safe
+user.profile.name: Ada
+```
+
+Folding only applies when all path segments consist of letters, digits, and underscores. Keys containing special characters are never folded.
+
+### `flattenDepth`
+
+Limits how many levels deep key folding traverses. Defaults to `Int.max` (unlimited). Only meaningful when `keyFolding` is `.safe`.
+
+```swift flattenDepth
+// Fold at most 3 key segments deep
+encoder.keyFolding = .safe
+encoder.flattenDepth = 3
+```
+
+### `limits`
+
+Caps resource consumption during encoding. The only current limit is `maxDepth`, which defaults to `32`.
+
+```swift limits
+encoder.limits = ToonEncoder.Limits(maxDepth: 64)
+
+// Default — suitable for production
+encoder.limits = .default   // maxDepth: 32
+
+// No limits — use only with locally constructed data
+encoder.limits = .unlimited
+```
+
+### `acceleration`
+
+Optional Metal backend for large string serialization workloads.
+
+```swift acceleration
+// Always use CPU (default)
+encoder.acceleration = .disabled
+
+// Use Metal when available and the string is at least minimumStringByteCount bytes
+encoder.acceleration = .metal(minimumStringByteCount: 16_384)
+
+// Force Metal without adaptive speed gating
+encoder.acceleration = .metalForced(minimumStringByteCount: 1)
+```
+
+Check Metal availability at runtime:
+
+```swift Metal availability
+print(ToonEncoder.isMetalAccelerationAvailable)  // Can the pipeline be created?
+print(ToonEncoder.isMetalAccelerationEnabled)    // Has the adaptive gate enabled it?
+```
+
+<Warning>
+  Use `.metalForced` only for benchmarking or hardware characterization. In production, prefer `.metal` so the adaptive speed gate can fall back to CPU for workloads where GPU dispatch is not advantageous.
+</Warning>
+
+## Full configuration example
+
+This is the full configuration block from the README, showing every option together:
+
+```swift Full encoder configuration
+let encoder = ToonEncoder()
+
+encoder.indent = 4
+encoder.delimiter = .tab // or .comma, .pipe
+
+encoder.negativeZeroStrategy = .preserve
+encoder.nonFiniteFloatStrategy = .null
+// .throw
+// .convertToString(positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
+
+encoder.keyFolding = .safe
+encoder.limits = ToonEncoder.Limits(maxDepth: 64)
+
+encoder.acceleration = .metal(minimumStringByteCount: 16_384)
+// encoder.acceleration = .metalForced(minimumStringByteCount: 1)
+
+print(ToonEncoder.isMetalAccelerationAvailable)
+print(ToonEncoder.isMetalAccelerationEnabled)
+```
+
+## Thread safety
+
+`ToonEncoder` instances are not thread-safe. Create a separate encoder per thread, or protect shared access with a lock.
+
+<CardGroup cols={2}>
+  <Card title="Decoding" icon="arrow-down-to-bracket" href="/guides/decoding">
+    Read TOON data back into Swift types with ToonDecoder.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle parse, structural, and limit errors from ToonDecodingError.
+  </Card>
+  <Card title="Foundation types" icon="calendar" href="/guides/foundation-types">
+    How Date, URL, and Data are serialized.
+  </Card>
+  <Card title="Performance tuning" icon="gauge-high" href="/guides/performance-tuning">
+    Choose the right acceleration mode and limits for your workload.
+  </Card>
+</CardGroup>

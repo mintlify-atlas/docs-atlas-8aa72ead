@@ -1,0 +1,99 @@
+---
+title: "Metal acceleration"
+description: "How ToonKit's optional GPU-backed string encoding works, when it helps, and how to configure it for production."
+---
+
+ToonKit includes an optional Metal backend that accelerates batch string serialization on Apple GPUs. The backend is **off by default** and designed to be safe: in dynamic mode it activates only when it measures a net benefit on the current hardware and workload.
+
+## What the Metal backend does
+
+String encoding is the most token-expensive part of TOON serialization — each string must be classified (safe to write bare, or must be quoted and escaped) before it can be written. For large arrays of strings this classification step dominates encoding time.
+
+The Metal backend offloads that work to the GPU:
+
+1. ASCII strings from the batch are concatenated into a single buffer.
+2. Metal compute kernels (`ToonStringClassifyPrimaryKernel`, `ToonStringClassifyAlternativeKernel`) classify every character in parallel.
+3. A range-based encoding kernel (`ToonStringEncodeRangesKernel`) writes the quoted or bare output strings.
+4. Results are returned to the CPU and merged with any non-ASCII strings processed on the CPU path.
+
+This pipeline is implemented in `MetalStringLiteralEncoder` and orchestrated through `MetalStringAccelerationPolicy`.
+
+## Acceleration modes
+
+`ToonEncoder.Acceleration` has three cases:
+
+| Mode | Behavior |
+|---|---|
+| `.disabled` | Always use the CPU implementation. Default. |
+| `.metal(minimumStringByteCount:)` | Use the Metal backend when available **and** the adaptive speed gate determines it is faster. Recommended for production. |
+| `.metalForced(minimumStringByteCount:)` | Use the Metal backend when available, bypassing adaptive gating. Intended for benchmarking only. |
+
+The `minimumStringByteCount` parameter sets the minimum total UTF-8 byte size of the string batch before Metal dispatch is attempted. The default value is `16_384`.
+
+```swift
+let encoder = ToonEncoder()
+
+// Production: dynamic mode, activates only when faster
+encoder.acceleration = .metal(minimumStringByteCount: 16_384)
+```
+
+<Warning>
+  `.metalForced` bypasses the adaptive speed gate. It can underperform significantly on small or structured payloads (as low as 0.08x in benchmarks). Use it only for benchmarking or hardware characterization — never in production.
+</Warning>
+
+## The adaptive speed gate
+
+In `.metal` mode, `ToonMetalSpeedGate` benchmarks CPU versus Metal on first use and caches the result. The gate uses two representative workloads:
+
+- A batch of long strings with heavy escaping (quotes, backslashes, tabs)
+- A batch of short structured strings (typical for identifiers and field values)
+
+Metal is activated only when the measured speedup exceeds **1.15×** on at least one of those workloads. The decision is cached for the lifetime of the process, scoped to the `minimumStringByteCount` and delimiter combination in use.
+
+For very large batches (≥ 1 MB total bytes, or ≥ 256 strings with ≥ 256 KB and ≥ 64 bytes average), the gate skips benchmarking and enables Metal immediately.
+
+## Checking availability and status
+
+`ToonEncoder` exposes two static properties:
+
+```swift
+// True when the Metal pipeline can be created on this device
+print(ToonEncoder.isMetalAccelerationAvailable)
+
+// True when the adaptive speed gate has enabled Metal for this process
+print(ToonEncoder.isMetalAccelerationEnabled)
+```
+
+## When Metal helps most
+
+The benchmark figures below were measured on macOS arm64 (March 14, 2026).
+
+| Benchmark | Without acceleration (ops/s) | Dynamic (ops/s) | Forced (ops/s) | Dynamic speedup |
+|---|---:|---:|---:|---:|
+| Encode structured payload | 15,904 | 16,765 | 2,529 | 1.05x |
+| Round-trip structured payload | 7,503 | 6,788 | 2,092 | 0.90x |
+| Encode primitive array | 72,452 | 70,315 | 5,743 | 0.97x |
+| Encode large escaped string array | 1 | 126 | 81 | **104.11x** |
+| Encode large safe ASCII string array | 3 | 89 | 66 | **28.12x** |
+| Encode realistic exchange-rate feed | 27 | 32 | 26 | 1.15x |
+| Decode structured payload (control) | 14,342 | 14,365 | 14,284 | 1.00x |
+
+Key takeaways:
+
+- **Large batched string arrays with escaping or quoting overhead** are the best fit — up to 104× speedup in dynamic mode.
+- **Structured objects, primitive arrays, and small payloads** show no meaningful gain from Metal; dynamic mode correctly avoids GPU dispatch for these.
+- **The decode path is unaffected** — there is no regression regardless of acceleration setting.
+
+## Production recommendation
+
+Use dynamic mode with the default threshold:
+
+```swift
+encoder.acceleration = .metal(minimumStringByteCount: 16_384)
+```
+
+This is safe to ship unconditionally: on devices without a usable Metal pipeline, or when the workload does not meet the size thresholds, the encoder falls back to the CPU path automatically.
+
+<Tip>
+  To run the benchmarks yourself: `swift run ToonBenchmark`
+</Tip>

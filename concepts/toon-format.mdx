@@ -1,0 +1,112 @@
+---
+title: "TOON format"
+description: "What Token-Oriented Object Notation is, how it differs from JSON, and why it produces 30–60% fewer tokens."
+---
+
+TOON (Token-Oriented Object Notation) is a compact, human-readable serialization format designed to minimize token usage when data is consumed by large language models. ToonKit implements **TOON specification 3.0** (2025-11-24). Full spec: [github.com/toon-format/spec](https://github.com/toon-format/spec).
+
+## How TOON differs from JSON
+
+JSON was designed for machine-to-machine interchange, not for token-efficient LLM prompting. It repeats structural characters — braces, brackets, quotes, colons — on every value, every row, and every nesting level. Those characters all count as tokens.
+
+TOON eliminates most of that repetition using three core mechanisms:
+
+- **YAML-style indentation** — nesting is expressed by indent level, not by braces or brackets.
+- **CSV-style tabular rows** — uniform arrays of objects are written as a header row followed by comma-separated data rows, so field names are declared once instead of repeated per element.
+- **Declared array length prefixes** — arrays carry their element count in the key (`tags[3]: a,b,c`), letting parsers validate length without counting delimiters.
+
+## Format at a glance
+
+```toon
+name: Ada Lovelace
+age: 36
+active: true
+score: 9.8
+email: null
+
+tags[3]: coding,maths,logic
+
+address:
+  street: 1 Math Lane
+  city: London
+
+orders[2]{id,amount,status}:
+  1001,49.99,shipped
+  1002,12.50,pending
+```
+
+The same document in JSON would require braces around every object, brackets around every array, quotes around every string key, and commas between every key-value pair — roughly 1.5–3× more tokens depending on the payload.
+
+## Token reduction
+
+TOON typically reduces token usage by **30–60% compared to JSON**. The reduction comes from three sources:
+
+| Source | Mechanism |
+|---|---|
+| No braces or brackets | Structure is conveyed by indentation and declared lengths |
+| Fewer quotes | Safe ASCII strings are written bare, without surrounding quotes |
+| CSV tabular rows | Object key names are declared once per array, not per row |
+
+Gains are largest on arrays of uniform objects (such as exchange-rate feeds, order lists, or search results) because the CSV header amortizes field-name cost across all rows.
+
+## JSON vs TOON comparison
+
+<Tabs>
+  <Tab title="TOON">
+```toon
+name: Ada Lovelace
+age: 36
+active: true
+tags[2]: coding,maths
+address:
+  street: 1 Math Lane
+  city: London
+```
+  </Tab>
+  <Tab title="JSON">
+```json
+{
+  "name": "Ada Lovelace",
+  "age": 36,
+  "active": true,
+  "tags": ["coding", "maths"],
+  "address": {
+    "street": "1 Math Lane",
+    "city": "London"
+  }
+}
+```
+  </Tab>
+</Tabs>
+
+## Type mapping
+
+### Scalar types
+
+| Swift type | TOON literal example |
+|---|---|
+| `nil` / `Optional.none` | `null` |
+| `Bool` | `true` / `false` |
+| `Int`, `Int64`, etc. | `42` |
+| `Double`, `Float` | `3.14` |
+| `String` | `hello` (bare) or `"hello, world"` (quoted when needed) |
+
+### Foundation types
+
+| Swift type | TOON representation | Example |
+|---|---|---|
+| `Date` | ISO 8601 string | `2023-11-14T22:13:20Z` |
+| `URL` | Bare URL string (unquoted when safe) | `https://example.com` |
+| `Data` | Base64 string | `SGVsbG8=` |
+
+### Structured types
+
+| Swift type | TOON representation |
+|---|---|
+| `Array` of primitives | Inline CSV with length prefix: `tags[3]: a,b,c` |
+| `Array` of objects | Tabular block with header and CSV rows |
+| `Dictionary` / `struct` / `class` | Indented key-value block |
+
+## Specification
+
+ToonKit implements **TOON 3.0** (2025-11-24). The canonical specification is published at [github.com/toon-format/spec](https://github.com/toon-format/spec).

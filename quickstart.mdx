@@ -1,80 +1,141 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Encode and decode your first Codable type with ToonKit in under five minutes."
 ---
 
-## Get started in three steps
+This guide walks you through a complete encode/decode round-trip using `ToonEncoder` and `ToonDecoder`. By the end you will have a working example and an understanding of what TOON output looks like.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Install ToonKit">
+    Follow the [Installation guide](/installation) to add ToonKit to your project, then import the module:
 
-### Step 1: Set up your local environment
+    ```swift
+    import Toon
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Define a Codable type">
+    ToonKit works with any type that conforms to `Codable`. No special protocols or annotations are needed:
 
-### Step 2: Deploy your changes
+    ```swift
+    struct User: Codable, Equatable {
+        let id: Int
+        let name: String
+        let tags: [String]
+    }
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Encode to TOON">
+    Create a `ToonEncoder` and call `encode(_:)`. The encoder returns `Data` containing UTF-8 TOON text:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```swift
+    let user = User(id: 1, name: "Ada Lovelace", tags: ["coding", "maths"])
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    let encoder = ToonEncoder()
+    let data = try encoder.encode(user)
 
-### Step 3: Go live
+    // The encoded TOON text looks like:
+    // id: 1
+    // name: Ada Lovelace
+    // tags[2]: coding,maths
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    Notice how TOON encodes the `tags` array as a single inline line with a declared length prefix (`[2]`). This is what produces the token savings compared to JSON.
+  </Step>
+
+  <Step title="Decode from TOON">
+    Create a `ToonDecoder` and call `decode(_:from:)` to reconstruct the original value:
+
+    ```swift
+    let decoder = ToonDecoder()
+    let decoded = try decoder.decode(User.self, from: data)
+    assert(decoded == user)
+    ```
+  </Step>
+
+  <Step title="Inspect the output">
+    Convert the encoded `Data` to a `String` to print or log the TOON representation:
+
+    ```swift
+    if let toonString = String(data: data, encoding: .utf8) {
+        print(toonString)
+    }
+    // id: 1
+    // name: Ada Lovelace
+    // tags[2]: coding,maths
+    ```
+  </Step>
+</Steps>
+
+## Nested structs and arrays
+
+TOON handles nested objects and tabular arrays of structs automatically. The encoder uses YAML-style indentation for nested objects and CSV-style tabular rows for uniform arrays of objects:
+
+```swift
+struct Address: Codable {
+    let street: String
+    let city: String
+}
+
+struct Order: Codable {
+    let id: Int
+    let amount: Double
+    let status: String
+}
+
+struct Customer: Codable {
+    let name: String
+    let address: Address
+    let orders: [Order]
+}
+
+let customer = Customer(
+    name: "Ada Lovelace",
+    address: Address(street: "1 Math Lane", city: "London"),
+    orders: [
+        Order(id: 1001, amount: 49.99, status: "shipped"),
+        Order(id: 1002, amount: 12.50, status: "pending"),
+    ]
+)
+
+let encoder = ToonEncoder()
+let data = try encoder.encode(customer)
+
+// name: Ada Lovelace
+//
+// address:
+//   street: 1 Math Lane
+//   city: London
+//
+// orders[2]{id,amount,status}:
+//   1001,49.99,shipped
+//   1002,12.50,pending
+```
+
+The tabular format (`orders[2]{id,amount,status}:`) is especially token-efficient for arrays of objects with a uniform set of keys.
+
+<Note>
+  `ToonEncoder` and `ToonDecoder` instances are **not thread-safe**. Create a separate instance per thread, or protect shared instances with a lock.
+</Note>
+
+<Tip>
+  Both `ToonEncoder` and `ToonDecoder` expose a rich set of configuration options — delimiter, key folding, resource limits, and optional Metal acceleration.   See the [Encoder guide](/guides/encoding) and [Decoder guide](/guides/decoding) for the full reference.
+</Tip>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Encoder guide" icon="arrow-up-from-bracket" href="/guides/encoding">
+    Configure delimiters, key folding, non-finite float handling, and Metal acceleration.
+  </Card>
+  <Card title="Decoder guide" icon="arrow-down-to-bracket" href="/guides/decoding">
+    Configure path expansion, resource limits, and error handling.
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="/concepts/toon-format">
+    Understand the TOON format in depth: scalars, arrays, tabular rows, and nested objects.
+  </Card>
+  <Card title="Reference" icon="code" href="/reference/toonencoder">
+    Full API reference for `ToonEncoder`, `ToonDecoder`, and `ToonDecodingError`.
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

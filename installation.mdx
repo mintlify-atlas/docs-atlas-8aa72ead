@@ -1,0 +1,118 @@
+---
+title: "Installation"
+description: "Add ToonKit to your Swift project using Swift Package Manager or Xcode's package browser."
+---
+
+<Note>
+  ToonKit requires **Swift 5.9 or later**. Ensure your toolchain is up to date before adding the package.
+</Note>
+
+## Platform minimum versions
+
+| Platform | Minimum version |
+|---|---:|
+| iOS | 16.0 |
+| macOS | 13.0 |
+| watchOS | 9.0 |
+| tvOS | 16.0 |
+| visionOS | 1.0 |
+
+## Installation methods
+
+<CodeGroup>
+
+```swift Swift Package Manager (Package.swift)
+// In your Package.swift dependencies array:
+.package(url: "https://github.com/Benny-Nottonson/ToonKit.git", from: "1.0.0")
+
+// And in the target that uses it:
+.target(
+    name: "MyTarget",
+    dependencies: [
+        .product(name: "Toon", package: "ToonKit")
+    ]
+)
+```
+
+```text Xcode (Add Packages UI)
+1. Open your project in Xcode.
+2. Go to File → Add Package Dependencies…
+3. Paste the repository URL:
+   https://github.com/Benny-Nottonson/ToonKit.git
+4. Select "Up to Next Major Version" starting from 1.0.0.
+5. Click Add Package.
+6. Choose the "Toon" library product and add it to your target.
+```
+
+</CodeGroup>
+
+### Swift Package Manager
+
+<Steps>
+  <Step title="Open Package.swift">
+    Locate the `Package.swift` file at the root of your Swift package.
+  </Step>
+  <Step title="Add the dependency">
+    Add ToonKit to the `dependencies` array:
+
+    ```swift
+    dependencies: [
+        .package(url: "https://github.com/Benny-Nottonson/ToonKit.git", from: "1.0.0")
+    ]
+    ```
+  </Step>
+  <Step title="Link the product to your target">
+    Add the `Toon` product to the `dependencies` of every target that will use it:
+
+    ```swift
+    .target(
+        name: "MyApp",
+        dependencies: [
+            .product(name: "Toon", package: "ToonKit")
+        ]
+    )
+    ```
+  </Step>
+  <Step title="Resolve packages">
+    Run `swift package resolve` (or build once in Xcode) to fetch the package.
+
+    ```bash
+    swift package resolve
+    ```
+  </Step>
+  <Step title="Import the module">
+    Add the import statement at the top of any Swift file that uses ToonKit:
+
+    ```swift
+    import Toon
+    ```
+  </Step>
+</Steps>
+
+### Xcode (Add Packages UI)
+
+<Steps>
+  <Step title="Open Add Package Dependencies">
+    In Xcode, go to **File → Add Package Dependencies…**
+  </Step>
+  <Step title="Enter the repository URL">
+    Paste the ToonKit repository URL into the search field:
+
+    ```
+    https://github.com/Benny-Nottonson/ToonKit.git
+    ```
+  </Step>
+  <Step title="Choose a version rule">
+    Select **Up to Next Major Version** and enter `1.0.0` as the minimum version, then click **Add Package**.
+  </Step>
+  <Step title="Select the library product">
+    In the package product chooser, select the **Toon** library and add it to your app target.
+  </Step>
+  <Step title="Import the module">
+    Add the import at the top of any Swift file that uses ToonKit:
+
+    ```swift
+    import Toon
+    ```
+  </Step>
+</Steps>

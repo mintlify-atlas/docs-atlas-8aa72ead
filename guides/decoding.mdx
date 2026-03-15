@@ -1,0 +1,163 @@
+---
+title: "Decoding"
+description: "Deserialize TOON data into Swift Decodable types using ToonDecoder."
+---
+
+`ToonDecoder` converts UTF-8 TOON text back into any `Decodable` value. Its design mirrors Foundation's `JSONDecoder`: configure it once, then call `decode(_:from:)` as many times as needed.
+
+## Basic usage
+
+<Steps>
+  <Step title="Create a decoder">
+    ```swift Basic decoder setup
+    import Toon
+
+    let decoder = ToonDecoder()
+    ```
+  </Step>
+  <Step title="Decode a value">
+    ```swift Decoding a struct
+    struct User: Codable, Equatable {
+        let id: Int
+        let name: String
+        let tags: [String]
+    }
+
+    // toonData is a Data value containing UTF-8 TOON text
+    let user = try decoder.decode(User.self, from: toonData)
+    ```
+  </Step>
+</Steps>
+
+## Configuration options
+
+### `expandPaths`
+
+Controls how dotted keys such as `user.profile.name` are interpreted during decoding. A dotted key can represent either a literal key whose name contains dots, or a path that should be expanded into nested objects.
+
+This is the inverse of `ToonEncoder.KeyFolding`.
+
+<Tabs>
+  <Tab title=".automatic (default)">
+    Expands dotted keys into nested objects. If expansion would collide with an existing key, the key is preserved as a literal instead of throwing an error. This is the safest choice for data from unknown sources.
+
+    ```swift automatic path expansion
+    decoder.expandPaths = .automatic
+    ```
+  </Tab>
+  <Tab title=".disabled">
+    Never expands dotted keys. Treats them as literal string keys. Use this when your data model intentionally contains dots in key names.
+
+    ```swift disabled path expansion
+    decoder.expandPaths = .disabled
+    ```
+  </Tab>
+  <Tab title=".safe">
+    Expands dotted keys strictly. Throws `ToonDecodingError.pathCollision(path:line:)` when expansion would conflict with an existing key. Use this when you need strict enforcement that no collisions exist in your data.
+
+    ```swift safe path expansion
+    decoder.expandPaths = .safe
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Use `.automatic` in production for maximum resilience. It handles both folded keys (produced by `ToonEncoder` with `.safe` key folding) and literal dotted keys, without ever throwing a path collision error.
+</Tip>
+
+### `limits`
+
+Caps resource consumption during decoding. The defaults are suitable for most production workloads.
+
+| Property | Default | Description |
+|---|---|---|
+| `maxInputSize` | 10 MB (10,485,760 bytes) | Maximum bytes accepted as input |
+| `maxDepth` | 32 | Maximum object nesting depth |
+| `maxObjectKeys` | 10,000 | Maximum keys in a single object |
+| `maxArrayLength` | 100,000 | Maximum elements in a single array |
+
+```swift limits
+// Default limits — suitable for production
+decoder.limits = .default
+
+// Custom limits
+decoder.limits = ToonDecoder.Limits(
+    maxInputSize: 10 * 1024 * 1024,  // 10 MB
+    maxDepth: 32,
+    maxObjectKeys: 10_000,
+    maxArrayLength: 100_000
+)
+
+// No limits — use only with fully trusted, locally constructed data
+decoder.limits = .unlimited
+```
+
+<Warning>
+  `Limits.unlimited` removes all safety checks. Malicious or malformed input can cause excessive memory usage, stack overflow from deep nesting, or denial-of-service conditions. Only use `.unlimited` with data you constructed yourself in the same process.
+</Warning>
+
+### `acceleration`
+
+Optional Metal backend for large tabular array decoding workloads.
+
+```swift acceleration
+// Always use CPU (default)
+decoder.acceleration = .disabled
+
+// Use Metal for tabular arrays with at least minimumCellCount cells
+decoder.acceleration = .metal(minimumCellCount: 512)
+
+// Force Metal without threshold gating — for benchmarking only
+decoder.acceleration = .metalForced
+```
+
+## Full configuration example
+
+```swift Full decoder configuration
+let decoder = ToonDecoder()
+
+decoder.expandPaths = .automatic
+// .safe
+// .disabled
+
+decoder.limits = ToonDecoder.Limits(
+    maxInputSize: 10 * 1024 * 1024,
+    maxDepth: 32,
+    maxObjectKeys: 10_000,
+    maxArrayLength: 100_000
+)
+```
+
+## Path expansion in depth
+
+When `ToonEncoder` is configured with `keyFolding = .safe`, a nested object like:
+
+```toon Folded key (encoder output)
+user.profile.name: Ada
+```
+
+…is stored as a single line. During decoding, `expandPaths` controls whether this is read as:
+
+- A nested object `{ user: { profile: { name: "Ada" } } }` (`.automatic` or `.safe`)
+- A flat key literally named `"user.profile.name"` (`.disabled`)
+
+The `.safe` mode adds a strict guarantee: if the same object already has a key `user` (not as a dotted-path prefix), decoding will throw `ToonDecodingError.pathCollision` rather than silently overwriting data.
+
+## Thread safety
+
+`ToonDecoder` instances are not thread-safe. Create a separate decoder per thread.
+
+<CardGroup cols={2}>
+  <Card title="Encoding" icon="arrow-up-from-bracket" href="/guides/encoding">
+    Configure ToonEncoder and serialize Swift types.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle all ToonDecodingError cases including limit and path errors.
+  </Card>
+  <Card title="Foundation types" icon="calendar" href="/guides/foundation-types">
+    How Date, URL, and Data round-trip through TOON.
+  </Card>
+  <Card title="Performance tuning" icon="gauge-high" href="/guides/performance-tuning">
+    Choose limits and acceleration mode for your workload.
+  </Card>
+</CardGroup>

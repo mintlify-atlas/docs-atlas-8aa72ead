@@ -1,97 +1,92 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "ToonKit"
+description: "Metal-accelerated Swift serialization with 30–60% token reduction vs JSON. Built for AI and data-intensive Apple-platform workloads."
 ---
 
-## Setting up
-
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Encode and decode your first TOON payload in under five minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="cube" href="/installation">
+    Add ToonKit to your Swift package or Xcode project.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="TOON Format" icon="file-code" href="/concepts/toon-format">
+    Understand what makes TOON compact and how it compares to JSON.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Metal Acceleration" icon="bolt" href="/concepts/metal-acceleration">
+    Learn how GPU-accelerated encoding works and when to enable it.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why ToonKit?
 
-Everything you need to create world-class documentation.
+ToonKit serializes Swift `Codable` types to **TOON** (Token-Oriented Object Notation) — a compact, human-readable format designed from the ground up for LLM context windows.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={2}>
+  <Card title="30–60% fewer tokens" icon="chart-line-down">
+    TOON eliminates JSON's structural verbosity — quotes, braces, and brackets — replacing them with indentation, CSV-style rows, and declared array lengths.
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Codable-compatible" icon="swift">
+    Drop-in replacement for `JSONEncoder` / `JSONDecoder`. Any type already conforming to `Codable` works immediately.
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Metal acceleration" icon="microchip">
+    Optional GPU-backed string classification delivers up to **104x speedup** on large batched string encoding workloads.
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Production-safe" icon="shield-check">
+    Adaptive speed gating activates Metal only when it's measurably faster. Configurable resource limits guard against malicious input.
   </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## Performance at a glance
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+| Benchmark | Without Metal | With dynamic Metal | Speedup |
+|---|---:|---:|---:|
+| Encode large escaped string array | 1 ops/s | 126 ops/s | **104.11x** |
+| Encode large safe ASCII string array | 3 ops/s | 89 ops/s | **28.12x** |
+| Encode structured payload | 15,904 ops/s | 16,765 ops/s | 1.05x |
+| Decode structured payload | 14,342 ops/s | 14,365 ops/s | ~1.00x |
+
+<Note>
+  Measured on macOS arm64 using `swift run ToonBenchmark`. Dynamic mode activates Metal only when it outperforms CPU — decode performance is never regressed.
+</Note>
+
+## Quick example
+
+```swift Swift
+import Toon
+
+struct User: Codable, Equatable {
+    let id: Int
+    let name: String
+    let tags: [String]
+}
+
+let user = User(id: 1, name: "Ada Lovelace", tags: ["coding", "maths"])
+
+// Encode to TOON
+let encoder = ToonEncoder()
+let data = try encoder.encode(user)
+// id: 1
+// name: Ada Lovelace
+// tags[2]: coding,maths
+
+// Decode from TOON
+let decoder = ToonDecoder()
+let decoded = try decoder.decode(User.self, from: data)
+assert(decoded == user)
+```
+
+<CardGroup cols={2}>
+  <Card title="Encoder reference" icon="upload" href="/reference/toonencoder">
+    All `ToonEncoder` configuration options.
+  </Card>
+  <Card title="Decoder reference" icon="download" href="/reference/toondecoder">
+    All `ToonDecoder` configuration options.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle `ToonDecodingError` cases in production code.
+  </Card>
+  <Card title="Foundation types" icon="calendar" href="/guides/foundation-types">
+    How `Date`, `URL`, and `Data` are serialized.
+  </Card>
+</CardGroup>
